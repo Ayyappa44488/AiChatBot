@@ -16,12 +16,12 @@ from email.message import EmailMessage
 import smtplib
 import ssl
 import io
-GOOGLE_API_KEY='AIzaSyBeZTTzDcc3HSMIgo89exF8TJhrhsZtsnM'
+GOOGLE_API_KEY='Your Api Key'
 conn=mysql.connector.connect(host="localhost",user="root",password="",database="chatbot")
 cursor = conn.cursor(dictionary=True) 
 #Email App Passwords
-email_sender = 'kchinnareddy2016@gmail.com'
-email_password = 'iawcyyplxaddxkdx'
+email_sender = 'Your Mail'
+email_password = 'Your Password'
 def audio_to_text(uploaded_file):
 #this method is used to convert audio to text
     recognizer = sr.Recognizer()
