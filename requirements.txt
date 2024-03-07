@@ -1,0 +1,16 @@
+streamlit
+google.generativeai
+pillow
+SpeechRecognition
+streamlit_option_menu
+re
+pyttsx3
+fitz
+docx
+csv
+io
+mysql.connector
+datetime
+email
+smtplib
+ssl
