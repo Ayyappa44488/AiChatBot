@@ -1,6 +1,7 @@
 #importing the required libraries
 import streamlit as st
 import google.generativeai as genai
+from openai import OpenAI
 import PIL.Image
 import speech_recognition as sr
 from streamlit_option_menu import option_menu
@@ -16,12 +17,35 @@ from email.message import EmailMessage
 import smtplib
 import ssl
 import io
-GOOGLE_API_KEY='Your Api Key'
+import json
+GOOGLE_API_KEY='apikey'
 conn=mysql.connector.connect(host="localhost",user="root",password="",database="chatbot")
 cursor = conn.cursor(dictionary=True) 
 #Email App Passwords
-email_sender = 'Your Mail'
-email_password = 'Your Password'
+email_sender = 'email'
+email_password = 'password'
+
+function_descriptions=[
+  {
+    "name": "send_an_email",
+    "description": "this function sends an email to the specified recipient",
+    "parameters": {
+      "type": "object",
+      "properties":{
+        "recipient": {
+          "type": "string",
+          "description": "this is the recipient email address in the format ex:abc@gmail.com",
+        },
+        "content": {
+          "type": "string",
+          "description": "this is the content of the email which the user wants to send",
+        },
+      },
+      "required": ["recipient", "content"],
+    },
+  }
+]
+
 def audio_to_text(uploaded_file):
 #this method is used to convert audio to text
     recognizer = sr.Recognizer()
@@ -128,11 +152,19 @@ def read_pdf(uploaded_file):
 
 def process_text(text):
 #this an text based gemini model used to process the text
-    genai.configure(api_key=GOOGLE_API_KEY)
-    model = genai.GenerativeModel('gemini-pro')
-    response = model.generate_content(text)
-    return response.text.lower()
-
+  client = OpenAI(
+  api_key='apikey',  # this is also the default, it can be omitted
+  )
+  response = client.chat.completions.create(
+    model="gpt-3.5-turbo",
+    messages=[
+      {"role": "user", "content": text},
+    ],
+  functions=function_descriptions,
+  function_call="auto",
+  )
+  
+  return response.choices[0].message
 def process_image(image,text):
 #this an image based gemini model used to process the image and text
     genai.configure(api_key=GOOGLE_API_KEY)
@@ -255,19 +287,6 @@ def main():
         display_recent()
     #checking if the search button is clicked
     if search:
-      mail,content=mail_check(text_input)
-      st.session_state["mail"]=mail
-      #checking if the mail is present in the text and extracting the content that the user wants to send
-      if mail:
-        if content:
-          with st.spinner("sending..."):
-            #sending the mail
-              send_mail(mail[0],content)
-          st.success("mail sent successfully")
-        else:
-          st.error("unable to send the mail")
-      
-      else:
         #if there is no mail context in the text then we are processing the text
         if chatbot_options!="previous":
           #in case we are using previous chats we are taking the recent chat history
@@ -351,13 +370,14 @@ def main():
             text=recent_chat+'\nby taking the analysis of above chats answer the below question if needed\n'+text_input
           with st.spinner("processing..."):
             response = process_text(text)
-            
-          if chatbot_options!="previous":
+        
+          if chatbot_options!="previous" and response.content:
             #incase if we are chating with the previous chats we are taking the recent chat history
+            response=response.content
             st.session_state["recent_history"].insert(1,{"bot": response, "is_user": False})
             display_recent()
             
-        if chatbot_options!="previous":
+        if chatbot_options!="previous" and response.content:
           #we make the entry of the chat history into the database if we are using the previous chats to their particular date
           mail=st.session_state.email
           sql="insert into data values(%s,%s,%s,%s)"
@@ -366,14 +386,26 @@ def main():
           conn.commit()  
         else:
           #we make the entry of the chat history into the database to our current date
-          mail=st.session_state.email
-          date=datetime.datetime.now()
-          sql="insert into data values(%s,%s,%s,%s)"
-          val = (mail,text_input,response,date)
-          cursor.execute(sql, val)
-          conn.commit()  
-          st.session_state["chat_history"].insert(1,{"bot": response, "is_user": False})
-          display()
+          if response.content:
+            response=response.content
+            mail=st.session_state.email
+            date=datetime.datetime.now()
+            sql="insert into data values(%s,%s,%s,%s)"
+            val = (mail,text_input,response,date)
+            cursor.execute(sql, val)
+            conn.commit()  
+            st.session_state["chat_history"].insert(1,{"bot": response, "is_user": False})
+            display()
+          else:
+            recipient=json.loads(response.function_call.arguments).get("recipient")
+            content=json.loads(response.function_call.arguments).get("content")
+            content=content.replace("Your Name","Ayyappa")
+            if recipient and content:
+              with st.spinner("sending..."):
+                  send_mail(recipient,content)
+              st.success("Mail sent successfully")
+            else:
+              st.write(response.content)
           
 #this is an interface for voicebot   
 #checking the login condition and the selected option is voicebot to start the voicebot     
@@ -413,7 +445,6 @@ def main():
                 #converting the text to speech and making the bot to speak the response
                   text_to_speech(response)
                   text=""
-                print("You said: {}".format(text))
             except Exception as e:
               #if there was any error in the voice detection we ignore and continue the process to detect the voice
                 pass
